@@ -1,0 +1,39 @@
+name: Publish binaries on Release
+on: 
+  release:
+    types: [created]
+  #watch:
+  #  types: [started]
+
+env:
+  TZ: Asia/Shanghai
+
+jobs:
+  releases-matrix:
+    name: Release Go Binary
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # build and publish in parallel: linux/386, linux/amd64, windows/386, windows/amd64, darwin/386, darwin/amd64 
+        goos: [linux, windows, darwin, freebsd, openbsd]
+        goarch: ["386", amd64, arm64, arm]
+        exclude:
+          - goarch: "386"
+            goos: darwin
+          - goarch: "arm"
+            goos: darwin  
+    steps:
+    - name: Get time
+      run: echo "TIME=$(date +%F/%T)" >> $GITHUB_ENV
+    - uses: actions/checkout@v2
+    - uses: wangyoucao577/go-release-action@master
+      env:
+        CGO_ENABLED: 0 # support alpine
+        TIME: "${{ env.TIME }}"
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        goos: ${{ matrix.goos }}
+        goarch: ${{ matrix.goarch }}
+        ldflags: -w -s -X main.buildTime=${{ env.TIME }}
+        goversion: 1.19.3
+        build_flags: -v

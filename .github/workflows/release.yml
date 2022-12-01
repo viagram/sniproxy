@@ -26,7 +26,7 @@ jobs:
     - name: Get buildtime
       run: echo "BUILDTIME=$(date +%F/%T)" >> $GITHUB_ENV
     - name: Get releasetag
-      run: echo "RELEASETAG=$(curl -4skL "https://api.github.com/repos/viagram/sniproxy/releases" | jq -r .[].tag_name | sort -ruV | head -n1)" >> $GITHUB_ENV
+      run: echo "RELEASETAG=$(curl -4skL "https://api.github.com/repos/viagram/sniproxy/releases" | jq -r .[].tag_name | egrep -io '[0-9]{1,2}.[0-9]{1,2}.[0-9]{1,2}' | sort -ruV | head -n1)" >> $GITHUB_ENV
     - uses: actions/checkout@v2
     - uses: wangyoucao577/go-release-action@master
       env:

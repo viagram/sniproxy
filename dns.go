@@ -161,7 +161,9 @@ func (dnsc *DNSClient) performExternalAQuery(fqdn string) ([]dns.RR, time.Durati
 }
 
 func processQuestion(q dns.Question) ([]dns.RR, error) {
+	c.recievedDNS.Inc(1)
 	if c.AllDomains || !inDomainList(q.Name) {
+		c.proxiedDNS.Inc(1)
 		// Return the public IP.
 		rr, err := dns.NewRR(fmt.Sprintf("%s A %s", q.Name, c.PublicIP))
 		if err != nil {

@@ -11,9 +11,14 @@ import (
 	"strings"
 	"time"
 
+	prometheusmetrics "github.com/deathowl/go-metrics-prometheus"
 	"github.com/golang-collections/collections/tst"
 	"github.com/mosajjal/dnsclient"
 	"github.com/oschwald/maxminddb-golang"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rcrowley/go-metrics"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	flag "github.com/spf13/pflag"
 
 	"github.com/miekg/dns"
@@ -44,6 +49,7 @@ type runConfig struct {
 	HTTPSPort					uint		`json:"httpsPort"`
 	DNSPort						uint		`json:"dnsPort"`
 	Interface					string		`json:"interface"`
+	Prometheus					string		`json:"prometheus"`
 
 
 	DisneyIP					string		`json:"disneyIP"`
@@ -75,6 +81,14 @@ type runConfig struct {
 
 	reverseProxySNI		string
 	reverseProxyAddr	string
+
+	// metrics
+	recievedHTTP		metrics.Counter
+	proxiedHTTP			metrics.Counter
+	recievedHTTPS		metrics.Counter
+	proxiedHTTPS		metrics.Counter
+	recievedDNS			metrics.Counter
+	proxiedDNS			metrics.Counter
 }
 
 var c runConfig
@@ -195,6 +209,8 @@ func main() {
 
 	flag.StringVar(&c.Interface, "interface", "", "Interface used for outbound TLS connections. uses OS prefered one if empty")
 
+	flag.StringVar(&c.Prometheus, "prometheus", "", "Enable prometheus endpoint on IP:PORT. example: 127.0.0.1:8080. Always exposes /metrics and only supports HTTP")
+
 	config := flag.StringP("config", "c", "", "path to JSON configuration file")
 
 
@@ -241,6 +257,29 @@ func main() {
 	}
 	if c.NetflixIP == "" {
 		c.NetflixIP = c.PublicIP
+	}
+
+	// set up metrics
+	c.recievedDNS = metrics.GetOrRegisterCounter("dns.requests.recieved", metrics.DefaultRegistry)
+	c.proxiedDNS = metrics.GetOrRegisterCounter("dns.requests.proxied", metrics.DefaultRegistry)
+	c.recievedHTTP = metrics.GetOrRegisterCounter("http.requests.recieved", metrics.DefaultRegistry)
+	c.proxiedHTTP = metrics.GetOrRegisterCounter("http.requests.proxied", metrics.DefaultRegistry)
+	c.recievedHTTPS = metrics.GetOrRegisterCounter("https.requests.recieved", metrics.DefaultRegistry)
+	c.proxiedHTTPS = metrics.GetOrRegisterCounter("https.requests.proxied", metrics.DefaultRegistry)
+
+	if c.Prometheus != "" {
+		p := prometheusmetrics.NewPrometheusProvider(metrics.DefaultRegistry, "sniproxy", c.PublicIP, prometheus.DefaultRegisterer, 1*time.Second)
+		go p.UpdatePrometheusMetrics()
+		// TODO: path is not configurable
+		go func() {
+			http.Handle("/metrics", promhttp.Handler())
+			log.Info("starting metrics server",
+				"address", c.Prometheus,
+			)
+			if err := http.ListenAndServe(c.Prometheus, promhttp.Handler()); err != nil {
+				log.Error("", err)
+			}
+		}()
 	}
 
 	if c.DomainListPath == "" {
